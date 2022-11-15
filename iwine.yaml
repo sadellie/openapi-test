@@ -1,0 +1,306 @@
+openapi: "3.0.2"
+info:
+  title: iWine API
+  version: "1.0.0"
+  description: |
+    # Introduction
+    iWine is a "smart" wine decanter that can communicate with mobile applications. This documentation describes REST API 
+    that is used to control iWine devices. You can use this API to build your own application.
+
+    # Setup
+    Your iWine must be turned ON and visible for other devices. Follow the manual in device's box to see 
+    how to connect iWine to your local network (WI-FI).
+
+    Once connected to a network, your device starts a local API service on port `98765`. Make sure that this
+    port is free for iWine.
+
+    ## How to check API service status
+    You can check if the API service is up by visiting http://localhost:98765
+
+    It should load a white blank page. If the page didn't load, try going through setup process once again.
+
+    ## Debug recommendation
+    For debugging purposes you should pour some liquid (preferably wine) into your iWine device.
+
+    # Authentication
+    <SecurityDefinitions />
+  x-logo:
+    url: 'hero.svg'
+    altText: Petstore logo
+servers:
+  - url: http://localhost:98765
+    description: "iWine API service runs locally."
+tags:
+  - name: status
+    x-displayName: Device status
+    description: Current device status.
+  - name: operations
+    x-displayName: Operations
+    description: All operations that can be executed by iWine via API.
+  - name: callback
+    x-displayName: Callback
+    description: Methods to use callback server and receive async messages.
+  - name: DeviceStatus
+    x-displayName: Device Status Model
+    description: |
+      <SchemaDefinition schemaRef="#/components/schemas/DeviceStatus" />
+paths:
+  /status:
+    get:
+      tags:
+        - status
+      operationId: getDeviceStatus
+      security:
+        - api_key: []
+      summary: Get iWine status
+      description: Returns information about liquid that is currently in iWine alongside with some information about the device itself.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceStatus"
+        "401":
+          description: API key was not provided.
+        "498":
+          description: Invalid API key was provided.
+  /subscribe:
+    post:
+      tags:
+        - callback
+      operationId: subToEvents
+      security:
+        - api_key: []
+      summary: Subscribe to events
+      description: |
+        Subscribe to events about running operations. By subscribing you can start receiving asynchronous messages
+        from iWine device.
+
+        **Important**: iWine API will send you events until you [unsubscribe](#operation/unsubscribe) or the device restarts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                callbackUrl:
+                  type: string
+                  format: uri
+                  example: https://qwerty.com/callback_receiver
+              required:
+                - callbackUrl
+      callbacks:
+        event:
+          "{$url}":
+            post:
+              security:
+                - api_key: []
+              summary: Message from server
+              description: This is how server will send messages to your machine.
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        operation:
+                          type: string
+                          example: HEAT
+                          description: See  [`operation` codes](#tag/device_status)
+                        success:
+                          type: boolean
+                          example: true
+                          description:
+                            Value is `true` if operation was successfully executed, `false` if there was an error (check
+                            your device).
+              responses:
+                "200":
+                  description: Callback successfully processed.
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriberId:
+                    type: string
+                    description:
+                      Unique ID that is used to identify subscribers. Use it to [unsubscribe](#operation/unsubFromEvents). You
+                      should store it locally on your machine.
+                    example: SUB-SCR-IBE-001
+        "400":
+          description: Invalid parameters, check request body.
+        "401":
+          description: API key was not provided.
+        "498":
+          description: Invalid API key was provided.
+  /unsubscribe:
+    post:
+      tags:
+        - callback
+      summary: Unsubscribe from events.
+      description: Indicates iWine API server that the specified user doesn't want to receive events.
+      security:
+        - api_key: []
+      operationId: unsubFromEvents
+      parameters:
+        - name: subscriberId
+          description: Unique ID that you got as a response when [subscribing](#operation/subToEvents).
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Unsubscribed.
+        "400":
+          description: Invalid parameters, check request body.
+        "401":
+          description: API key was not provided.
+        "498":
+          description: Invalid API key was provided.
+  /changeTemp:
+    get:
+      tags:
+        - operations
+      operationId: changeTemperature
+      security:
+        - api_key: []
+      parameters:
+        - name: temp
+          in: query
+          schema:
+            type: integer
+            description: |
+              Target temperature in Celsius. 
+
+              If you target temperature is lower than current temperature, the operation will have a `CHILL` code.
+
+              If you target temperature is higher than current temperature, the operation will have a `HEAT` code.
+
+              If you target temperature equals to current temperature, the operation will have an `IDLE` code (Finish immediately).
+
+              To learn more about operation codes see [`operation` in DeviceStatus description](#tag/DeviceStatus)
+            minimum: 10
+            maximum: 20
+          required: true
+      summary: Change temperature
+      description: |
+        Change wine temperature. This method **cancels current operation** and starts the requested one.
+
+        **Important**: This operation is not immediate. For example, changing temperature from 20˚C 
+        to 15˚C will take about 7 minutes. You should implement a mechanism to avoid abuse of this method (wait for operation 
+        to finish before starting a new one).
+
+        You should [subscribe to events](#operation/subToEvents) to see when they succeed or fail.
+      responses:
+        "200":
+          description: iWine has received your request and will heat/chill the wine.
+        "400":
+          description: Target temperature was not provided or was out of range.
+        "401":
+          description: API key was not provided.
+        "498":
+          description: Invalid API key was provided.
+  /swirl:
+    get:
+      tags:
+        - operations
+      operationId: swirlWine
+      security:
+        - api_key: []
+      summary: Swirl the wine
+      description: |
+        Swirl the wine. This method **cancels current operation** and starts the requested one.
+
+        **Important**: This operation is not immediate and may take several seconds. You should implement a mechanism to avoid abuse of this
+        method (wait for operation to finish before starting a new one).
+
+        You should [subscribe to events](#operation/subToEvents) to see when they succeed or fail.
+      responses:
+        "200":
+          description: iWine has received your request and will swirl the wine.
+        "401":
+          description: API key was not provided.
+        "498":
+          description: Invalid API key was provided.
+components:
+  securitySchemes:
+    api_key:
+      description: |
+        Each iWine device comes with an API key in it's box. It's required for all operations. If you have lost it,
+        contact us: iwine@company.com
+      type: apiKey
+      name: api_key
+      in: query
+  schemas:
+    DeviceStatus:
+      type: object
+      properties:
+        volume:
+          type: integer
+          description: Liquid volume in milliliters.
+          example: "420"
+        alcohol:
+          type: integer
+          description: Alcohol content of a liquid in percent of total volume.
+          example: 12
+        sugar:
+          type: integer
+          description: Sugar content of a liquid in milligrams.
+          example: 4650
+        temperature:
+          type: integer
+          description: Liquid temperature in Celsius.
+          example: 15
+        wine:
+          type: string
+          enum:
+            - RED
+            - WHITE
+            - ROSE
+            - ORANGE
+            - UNKNOWN
+          title: Type of wine
+          description: |
+            Type of wine. Uses Machine Learning algorithm.
+            | Code | Description |
+            | --- | --- |
+            | RED | Red type of wine. |
+            | WHITE | White type of wine. |
+            | ROSE | Rose type of wine. |
+            | ORANGE | Orange type of wine. |
+            | UNKNOWN | Unknown type of wine. |
+        wine-confidence:
+          type: number
+          format: float
+          title: Machine Learning confidence score.
+          maximum: 1
+          minimum: 0
+          description: |
+            Machine Learning confidence score. Higher score means higher confidence, i.e. 1 means that iWine is absolutely sure 
+            about it's detected type of wine. If the type of wine cannot be detected (UNKNOWN), this value will be 0.
+          example: 0.7
+        operation:
+          type: string
+          enum:
+            - IDLE
+            - HEAT
+            - CHILL
+            - SHAKE
+            - ERROR
+          title: Operation
+          description: |
+            Current operation that is being processed by device
+            | Code | Description |
+            |---|---|
+            | IDLE | iWine is not doing anything. |
+            | HEAT | iWine is heating the wine. |
+            | CHILL | iWine is chilling the wine. |
+            | SHAKE | iWine is shaking the wine. |
+            | ERROR | Latest operation didn't succeed, please check your device. |
