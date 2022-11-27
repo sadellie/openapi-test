@@ -11,11 +11,12 @@ info:
     Your iWine must be turned ON and visible for other devices. Follow the manual in device's box to see 
     how to connect iWine to your local network (WI-FI).
 
-    Once connected to a network, your device starts a local API service on port `98765`. Make sure that this
-    port is free for iWine.
+    Once connected to a network, your device starts a local API service on port `5555`.
 
     ## How to check API service status
-    You can check if the API service is up by visiting http://localhost:98765
+    Find the IP address of iWine in your network. Once found, visit that address on port `5555`.
+
+    For example, iWine has the IP address of `192.168.1.119`. You need to visit `192.168.1.119:5555` in your browser.
 
     It should load a white blank page. If the page didn't load, try going through setup process once again.
 
